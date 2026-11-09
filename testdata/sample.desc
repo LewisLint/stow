@@ -1,0 +1,8 @@
+%NAME%
+stow-demo
+
+%VERSION%
+1.0-1
+
+%DESC%
+A sample package for learning metadata parsing.

@@ -6,43 +6,14 @@ import (
 )
 
 func main() {
-	//	uidb := list("uninstalled")
-	//	idb := list("installed")
-	if len(os.Args) < 3 {
-		fmt.Printf("You must call stow with an argument.")
-		return
+	if len(os.Args) != 2 {
+		fmt.Printf("usage: %s <repository.db>\n", os.Args[0])
+		os.Exit(2)
 	}
-	var o []string
-	arg := os.Args[1]
-	cmd := arg
-	switch cmd {
-	case "s":
-		search(os.Args[2])
-	case "i":
-		install(os.Args[2])
-	case "l":
-		fmt.Printf("(L)ist ")
-		// Make sure they actually passed the u or i argument
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: ./stow l [i|u]")
-			return
-		}
 
-		// Change these from [3] to [2]
-		if os.Args[2] == "u" {
-			o = list("uninstalled")
-			fmt.Printf("(U)ninstalled packages:\n")
-		} else if os.Args[2] == "i" {
-			o = list("installed")
-			fmt.Printf("(I)nstalled packages:\n")
-		} else {
-			fmt.Printf("'l' does not take argument '%s'\n", os.Args[2])
-		}
-		for i := range o {
-			// Also make sure to change your %f to %s here so it prints names correctly!
-			fmt.Printf("%s\n", o[i])
-		}
-
+	if e := lsdb(os.Args[1]); e != nil {
+		fmt.Printf("%v\n", e)
+		os.Exit(1)
 	}
 }
 

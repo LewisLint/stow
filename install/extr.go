@@ -23,7 +23,7 @@ func Expkg(pkgname, archpath string) error {
 	}
 
 	// create a directory for each individual package
-	pkgdir := filepath.Join(home, ".local", "stow", pkgname)
+	pkgdir := filepath.Join(home, ".local", "stowy", pkgname)
 
 	if e := os.MkdirAll(pkgdir, 0o755); e != nil {
 		return fmt.Errorf("I/O: could not create directory %s of perms 755\n", pkgdir)
@@ -67,6 +67,9 @@ func Expkg(pkgname, archpath string) error {
 				if e := os.Symlink(l.target, lp); e != nil {
 					return fmt.Errorf("I/O: create symlink %q: %w", lp, e)
 				}
+			}
+			if e := expose(pkgdir); e != nil {
+				return fmt.Errorf("I/O: could not correctly expose to path\n")
 			}
 			return nil
 		}
@@ -129,5 +132,44 @@ func Expkg(pkgname, archpath string) error {
 
 		}
 	}
+
+}
+
+func expose(pkgdir string) error {
+	pkgbin := filepath.Join(pkgdir, "usr", "bin")
+	entries, e := os.ReadDir(pkgbin)
+	if os.IsNotExist(e) {
+		return fmt.Errorf("I/O: directory does not exist")
+	} // damn even go devs dont have grammar
+	if e != nil {
+		return fmt.Errorf("E: read pkg commands: %w", e)
+	}
+	home, _ := os.UserHomeDir()
+	userbin := filepath.Join(home, ".local", "bin")
+	if e := os.MkdirAll(userbin, 0o755); e != nil {
+		return fmt.Errorf("I/O: could not create cmd dir: %w", e)
+	}
+
+	for _, i := range entries {
+		src := filepath.Join(pkgbin, i.Name())
+		info, e := os.Stat(src)
+		if e != nil {
+			return fmt.Errorf("E: failed to find %q: %v\n", src, e)
+		}
+		if !info.Mode().IsRegular() ||
+			info.Mode().Perm()&0o111 == 0 {
+			continue
+		}
+		link := filepath.Join(userbin, i.Name())
+		if _, e := os.Lstat(link); e == nil {
+			return fmt.Errorf("E: %s already exists: %w", link, e)
+		} else if !os.IsNotExist(e) {
+			return fmt.Errorf("I/O: %s does not exist: %w", link, e)
+		}
+		if e := os.Symlink(src, link); e != nil {
+			return fmt.Errorf("E: link %q: %w", link, e)
+		}
+	}
+	return nil
 
 }

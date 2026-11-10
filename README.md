@@ -1,38 +1,54 @@
-# stow
+# stowy
 
-A small, experimental per-user package manager prototype written in Go.
+An experimental, user-local package manager prototype written in Go.
 
-## Aim
+`stowy` is a small project for exploring how to install Arch Linux package archives into a home-directory layout without `sudo`. The idea is to unpack packages under `~/.local/stowy/` and expose executables from `usr/bin` into `~/.local/bin`.
 
-The goal is to install software into a user's home directory without `sudo`, keeping package files under `~/.local/stow/`. This is not intended to replace `pacman` or manage the system package database. The current prototype reads Arch Linux package archives (`.pkg.tar.zst`); running the program on another distribution would not make Arch packages compatible with that distribution.
+This is intentionally a prototype, not a replacement for `pacman` or a hardened package manager. It is best treated as a learning tool and a sandbox for experimenting with package extraction and user-local installation patterns.
 
-## Current status
+## What it does today
 
-The command accepts one package archive. It reads `.PKGINFO`, prints basic package information, and extracts package contents into `~/.local/stow/<package-name>/`.
+- Reads package metadata from an Arch package archive's `.PKGINFO` section
+- Prints the package name, version, architecture, and declared dependencies
+- Extracts archive contents into `~/.local/stowy/<package-name>/`
+- Handles regular files, directories, and relative symlinks
+- Exposes runnable files from `usr/bin` as symlinks in `~/.local/bin`
+- Rejects unsafe archive paths and unsupported entry types
 
-It currently handles regular files, directories, and relative symlinks. It rejects archive paths that are not local and unsupported archive entry types. This is still a learning prototype, not a safe general-purpose installer.
+## Example usage
 
-## Try it
-
-From the repository root, run:
+From the repository root:
 
 ```sh
 go run . /path/to/package.pkg.tar.zst
 ```
 
-For example, on an Arch system with that package cached:
+For example, on an Arch system with a cached package archive:
 
 ```sh
 go run . /var/cache/pacman/pkg/go-tools-4:0.52.0-1-x86_64.pkg.tar.zst
 ```
 
-The command prints the parsed metadata and extracts files under `~/.local/stow/`. Do not use it on packages or directories you care about yet.
+The tool will print the package metadata and then extract the package contents under `~/.local/stowy/`.
 
-## Not implemented yet
+## Current limitations
 
-- Exposing package commands through `~/.local/bin` and other user-local paths
-- Tracking installed files and uninstalling packages
-- Dependency resolution and package compatibility checks
-- Signature or checksum verification
-- Complete protection against unsafe archive contents and existing-file conflicts
-- ... Installing packages 
+This project is still intentionally incomplete. At the moment it does not provide:
+
+- dependency resolution
+- uninstall support
+- package database tracking
+- signature or checksum verification
+- conflict handling for already-installed files
+- a safe or general-purpose installation model for production use
+
+## Project status
+
+The code is a prototype for experimenting with:
+
+- parsing Arch package metadata
+- reading `.pkg.tar.zst` archives
+- extracting files into a user-local prefix
+- exposing binaries from package contents into a user `bin` directory
+
+Use it only with packages you are comfortable inspecting or testing in an isolated environment.

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	extract "stow/install"
-	"stow/meta"
+	extract "stowy/install"
+	"stowy/meta"
 )
 
 type Paths struct {
@@ -16,7 +16,7 @@ type Paths struct {
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Printf("usage: stow <foo.tar.zst>\n")
+		fmt.Printf("usage: stowy <foo.tar.zst>\n")
 		os.Exit(2)
 	}
 

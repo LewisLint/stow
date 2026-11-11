@@ -57,6 +57,8 @@ func Parsen(dat string) Pkg {
 			pkg.Ver = l
 		case "%DESC%":
 			pkg.Desk = l
+		case "%FILENAME%":
+			pkg.Fname = l
 		}
 		field = ""
 

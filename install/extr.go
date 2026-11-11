@@ -6,24 +6,22 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/klauspost/compress/zstd"
 )
 
 // btw i use arch
-
 func Expkg(pkgname, archpath string) error {
 	// find user's ~ dir
-	// put bullshit in ~/.local
-
 	home, e := os.UserHomeDir()
 	if e != nil {
 		return fmt.Errorf("E: user is a homeless streetbegger.\nE: cannot find ~ dir\nSTDERR: %w\n", e)
-		//lmfao
 	}
 
 	// create a directory for each individual package
-	pkgdir := filepath.Join(home, ".local", "stowy", pkgname)
+	pkgdir := filepath.Join(home, ".local", "stowy", "root")
+	logStep("extract", "writing package files to %s", pkgdir)
 
 	if e := os.MkdirAll(pkgdir, 0o755); e != nil {
 		return fmt.Errorf("I/O: could not create directory %s of perms 755\nSTDERR: %w\n", pkgdir, e)
@@ -36,7 +34,7 @@ func Expkg(pkgname, archpath string) error {
 	}
 	defer f.Close()
 
-	// extract zstd data while its read
+	// extract zstd data while its read.
 	// 'tr' will read tar entries
 	// from the decompressed stream
 	zr, e := zstd.NewReader(f)
@@ -71,6 +69,7 @@ func Expkg(pkgname, archpath string) error {
 			if e := expose(pkgdir); e != nil {
 				return fmt.Errorf("I/O: could not correctly expose to path\nSTDERR: %w\n", e)
 			}
+			logStep("done", "package extraction complete")
 			return nil
 		}
 		if e != nil {
@@ -98,14 +97,13 @@ func Expkg(pkgname, archpath string) error {
 		switch hdr.Typeflag {
 
 		case tar.TypeSymlink:
-			resolv := filepath.Clean(filepath.Join(filepath.Dir(hdr.Name), hdr.Linkname))
-			if filepath.IsAbs(hdr.Linkname) ||
-				!filepath.IsLocal(resolv) {
-				return fmt.Errorf("I/O: unsafe symlink %q > %q\n", hdr.Name, hdr.Linkname)
+			target, err := localSymlinkTarget(hdr.Name, hdr.Linkname)
+			if err != nil {
+				return fmt.Errorf("I/O: unsafe symlink %q > %q: %w", hdr.Name, hdr.Linkname, err)
 			}
 			symlinks = append(symlinks, pendsymlink{
 				name:   hdr.Name,
-				target: hdr.Linkname,
+				target: target,
 			})
 		case tar.TypeDir:
 			// create directories as a clone from tar
@@ -132,6 +130,7 @@ func Expkg(pkgname, archpath string) error {
 			return fmt.Errorf("E: %q has an unsupported archive entry of type %d\n", hdr.Name, hdr.Typeflag)
 
 		}
+
 	}
 
 }
@@ -163,6 +162,15 @@ func expose(pkgdir string) error {
 		}
 		link := filepath.Join(userbin, i.Name())
 		if _, e := os.Lstat(link); e == nil {
+			if _, e := os.Lstat(link); e == nil {
+				existingTarget, readErr := os.Readlink(link)
+				if readErr == nil && existingTarget == src {
+					continue
+				}
+				return fmt.Errorf("E: %s already exists", link)
+			} else if !os.IsNotExist(e) {
+				return fmt.Errorf("I/O: could not inspect %s: %w", link, e)
+			}
 			return fmt.Errorf("E: %s already exists", link)
 		} else if !os.IsNotExist(e) {
 			return fmt.Errorf("I/O: could not inspect %s: %w", link, e)
@@ -170,7 +178,30 @@ func expose(pkgdir string) error {
 		if e := os.Symlink(src, link); e != nil {
 			return fmt.Errorf("E: link %q: %w", link, e)
 		}
+		logStep("link", "exposed command %s", link)
 	}
+	logStep("bin", "command directory is %s; if zsh cannot find a newly installed command, run: rehash", userbin)
 	return nil
 
+}
+
+func logStep(label, format string, args ...interface{}) {
+	fmt.Printf("\033[1m\033[36m%s\033[0m %s\n", label, fmt.Sprintf(format, args...))
+}
+
+func localSymlinkTarget(name, linkname string) (string, error) {
+	var target string
+
+	if filepath.IsAbs(linkname) {
+		// Treat an archive's absolute path as rooted at stowy's shared install root.
+		target = filepath.Clean(strings.TrimLeft(linkname, string(filepath.Separator)))
+	} else {
+		target = filepath.Clean(filepath.Join(filepath.Dir(name), linkname))
+	}
+
+	if !filepath.IsLocal(target) {
+		return "", fmt.Errorf("target escapes install root")
+	}
+
+	return filepath.Rel(filepath.Dir(name), target)
 }

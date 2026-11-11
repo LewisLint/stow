@@ -7,14 +7,22 @@ import (
 	"path/filepath"
 	extract "stowy/install"
 	"stowy/meta"
+	"strings"
 )
 
 type Paths struct {
 	Bin   string // compiled packages
 	Lib   string // user-local libs
 	Share string // data
-
 }
+
+const (
+	colorReset = "\033[0m"
+	colorCyan  = "\033[36m"
+	colorGreen = "\033[32m"
+	colorWarn  = "\033[33m"
+	colorBold  = "\033[1m"
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -32,48 +40,50 @@ func main() {
 		dburl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db", repo, repo)
 		dbpath := repodbpath(repo)
 
-		if aajdffhlkkas := dlfile(context.Background(), dburl, dbpath); aajdffhlkkas != nil {
-			fmt.Fprintf(os.Stderr, "E: downloading repo db (%s): %v\n", repo, aajdffhlkkas)
+		logStep("repo", "downloading %s database", repo)
+		if err := dlfile(context.Background(), dburl, dbpath); err != nil {
+			fmt.Fprintf(os.Stderr, "E: downloading repo db (%s): %v\n", repo, err)
 			os.Exit(1)
 		}
 
-		matches, e := lsdb(dbpath, term)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "E: search db (%s): %v\n", repo, e)
+		matches, err := lsdb(dbpath, term)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "E: search db (%s): %v\n", repo, err)
 			os.Exit(1)
 		}
-		for _, pkg := range matches {
-			fmt.Printf("%s %s - %s\n\tarchive: %s\n", pkg.Name, pkg.Ver, pkg.Desk, pkg.Fname)
+		if len(matches) == 0 {
+			logWarn("no package matches for %q in %s", term, repo)
+			os.Exit(0)
 		}
+		printPackageList(matches)
 
 	case "l":
 		if len(os.Args) != 3 {
 			fmt.Fprintln(os.Stderr, "E: usage: stowy l <package.tar.zst>")
 			os.Exit(2)
 		}
-		pkg, e := meta.Pkginfo(os.Args[2])
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "E: %v\n", e)
+		logStep("archive", "reading local package metadata from %s", os.Args[2])
+		pkg, err := meta.Pkginfo(os.Args[2])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "E: %v\n", err)
 			os.Exit(1)
 		}
 
-		fmt.Printf("Pkg name: %s\nPkg ver: %s\nPkg arch: %s\n", pkg.Name, pkg.Ver, pkg.Archbtw)
-		fmt.Printf("Dependencies: \n")
-		for _, dep := range pkg.Depends {
-			fmt.Printf("\t%s\n", dep)
-		}
-		if e := extract.Expkg(pkg.Name, os.Args[2]); e != nil {
-			fmt.Fprintf(os.Stderr, "E: extract error: %v\n", e)
+		printPackageInfo(pkg)
+		logStep("install", "installing %s %s", pkg.Name, pkg.Ver)
+		if err := extract.Expkg(pkg.Name, os.Args[2]); err != nil {
+			fmt.Fprintf(os.Stderr, "E: extract error: %v\n", err)
 			os.Exit(1)
 		}
+		logSuccess("installed %s", pkg.Name)
 
 	case "d":
 		if len(os.Args) != 3 {
 			fmt.Fprintf(os.Stderr, "E: usage: stowy  d <pkg>\n")
 			os.Exit(2)
 		}
-		if e := extract.Remove(os.Args[2]); e != nil {
-			fmt.Fprintf(os.Stderr, "E: remove error: %v\n", e)
+		if err := extract.Remove(os.Args[2]); err != nil {
+			fmt.Fprintf(os.Stderr, "E: remove error: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -85,63 +95,95 @@ func main() {
 
 		repo := os.Args[2]
 		term := os.Args[3]
-
 		dburl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db", repo, repo)
 		dbpath := repodbpath(repo)
 
-		if e := dlfile(context.Background(), dburl, dbpath); e != nil {
-			fmt.Fprintf(os.Stderr, "E: download db (%s): %v\n", repo, e)
+		logStep("repo", "downloading %s repo database", repo)
+		if err := dlfile(context.Background(), dburl, dbpath); err != nil {
+			fmt.Fprintf(os.Stderr, "E: download db (%s): %v\n", repo, err)
 			os.Exit(1)
 		}
 
-		matches, e := lsdb(dbpath, term)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "E: search db (%s): %v\n", repo, e)
+		logStep("search", "scanning %s for %q", repo, term)
+		matches, err := lsdb(dbpath, term)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "E: search db (%s): %v\n", repo, err)
 			os.Exit(1)
 		}
 		if len(matches) == 0 {
-			fmt.Fprintf(os.Stderr, "E: no pkg fond for %q in in %s\n", term, repo)
+			fmt.Fprintf(os.Stderr, "E: no package found for %q in %s\n", term, repo)
+			os.Exit(1)
 		}
 		pkg := matches[0]
+		for i := range matches {
+			if strings.EqualFold(term, matches[i].Name) {
+				pkg = matches[i]
+				break
+			}
+		}
+
+		logStep("select", "selected %s %s (%s)", pkg.Name, pkg.Ver, pkg.Fname)
 		archurl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s", repo, pkg.Fname)
 		archpath := filepath.Join(os.TempDir(), pkg.Fname)
-		if e := dlfile(context.Background(), archurl, archpath); e != nil {
-			fmt.Fprintf(os.Stderr, "E: download %s: %v", pkg.Name, e)
+		logStep("download", "fetching package archive to %s", archpath)
+		if err := dlfile(context.Background(), archurl, archpath); err != nil {
+			fmt.Fprintf(os.Stderr, "E: download %s: %v", pkg.Name, err)
 			os.Exit(1)
 		}
 
-		metapkg, e := meta.Pkginfo(archpath)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "E: parse %s pkg metadata: %v\n", pkg.Name, e)
+		logStep("meta", "parsing package metadata")
+		metapkg, err := meta.Pkginfo(archpath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "E: parse %s pkg metadata: %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
-		if e := extract.Expkg(metapkg.Name, archpath); e != nil {
-			fmt.Fprintf(os.Stderr, "E: install pkg (%s): %v\n", pkg.Name, e)
+		logStep("install", "installing %s %s", metapkg.Name, metapkg.Ver)
+		if err := extract.Expkg(metapkg.Name, archpath); err != nil {
+			fmt.Fprintf(os.Stderr, "E: install pkg (%s): %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
+		logSuccess("installed %s", metapkg.Name)
 
 	default:
 		fmt.Fprintf(os.Stderr, "E: unknown cmd: %q\nusage: stowy <(s)earch|(i)nstall> ...\n", os.Args[1])
 		os.Exit(2)
 	}
-
 }
 
-func cstr(shit string) bool {
-	if shit == "" {
-		return false
+func logStep(label, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("%s%s%s%s %s\n", colorBold, colorCyan, label, colorReset, msg)
+}
+
+func logSuccess(format string, args ...interface{}) {
+	fmt.Printf("%s%s✔%s %s\n", colorBold, colorGreen, colorReset, fmt.Sprintf(format, args...))
+}
+
+func logWarn(format string, args ...interface{}) {
+	fmt.Printf("%s%s!%s %s\n", colorBold, colorWarn, colorReset, fmt.Sprintf(format, args...))
+}
+
+func printPackageInfo(pkg meta.Pkg) {
+	fmt.Printf("\n%sPackage%s %s %s\n", colorBold, colorReset, pkg.Name, pkg.Ver)
+	fmt.Printf("  arch: %s\n", pkg.Archbtw)
+	if len(pkg.Depends) > 0 {
+		fmt.Printf("  depends:\n")
+		for _, dep := range pkg.Depends {
+			fmt.Printf("    - %s\n", dep)
+		}
+	} else {
+		fmt.Printf("  depends: none\n")
 	}
-	return true
+	fmt.Println()
 }
 
-func search(shit string) string {
-
-	return "" // filler functions for different
-
-	// future commands
-}
-
-func install(shit string) { // idk what to return
+func printPackageList(matches []meta.Pkg) {
+	fmt.Printf("\n%sResults%s\n", colorBold, colorReset)
+	for _, pkg := range matches {
+		fmt.Printf("  %s %s - %s\n", pkg.Name, pkg.Ver, pkg.Desk)
+		fmt.Printf("    archive: %s\n", pkg.Fname)
+	}
+	fmt.Println()
 }
 
 func list(dir string) []string {
@@ -152,7 +194,6 @@ func list(dir string) []string {
 	}
 	var obj []string
 	for i := range o {
-
 		obj = append(obj, o[i].Name())
 	}
 

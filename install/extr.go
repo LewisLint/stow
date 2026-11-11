@@ -110,7 +110,7 @@ func Expkg(pkgname, archpath string) error {
 		case tar.TypeDir:
 			// create directories as a clone from tar
 			if err := os.MkdirAll(targ, 0o755); err != nil {
-				return fmt.Errorf("I/O: could not create directory %v\nSTDERR: %w", filepath.Dir(targ), e)
+				return fmt.Errorf("I/O: could not create directory %v: %w", targ, err)
 			}
 		case tar.TypeReg, tar.TypeRegA:
 			// regulr files should create copy with its contents
@@ -163,9 +163,9 @@ func expose(pkgdir string) error {
 		}
 		link := filepath.Join(userbin, i.Name())
 		if _, e := os.Lstat(link); e == nil {
-			return fmt.Errorf("E: %s already exists: %w", link, e)
+			return fmt.Errorf("E: %s already exists", link)
 		} else if !os.IsNotExist(e) {
-			return fmt.Errorf("I/O: %s does not exist: %w", link, e)
+			return fmt.Errorf("I/O: could not inspect %s: %w", link, e)
 		}
 		if e := os.Symlink(src, link); e != nil {
 			return fmt.Errorf("E: link %q: %w", link, e)

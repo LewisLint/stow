@@ -86,64 +86,85 @@ func main() {
 			fmt.Fprintf(os.Stderr, "E: remove error: %v\n", err)
 			os.Exit(1)
 		}
-
 	case "i":
-		if len(os.Args) != 4 {
-			fmt.Fprintf(os.Stderr, "E: usage: stowy i <repo> <term>")
+		if len(os.Args) != 3 {
+			fmt.Fprintln(os.Stderr, "E: usage: stowy i <package>")
 			os.Exit(2)
 		}
 
-		repo := os.Args[2]
-		term := os.Args[3]
-		dburl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db", repo, repo)
-		dbpath := repodbpath(repo)
+		term := os.Args[2]
+		repos := []string{"core", "extra", "multilib"}
 
-		logStep("repo", "downloading %s repo database", repo)
-		if err := dlfile(context.Background(), dburl, dbpath); err != nil {
-			fmt.Fprintf(os.Stderr, "E: download db (%s): %v\n", repo, err)
-			os.Exit(1)
-		}
+		var pkg meta.Pkg
+		repo := ""
 
-		logStep("search", "scanning %s for %q", repo, term)
-		matches, err := lsdb(dbpath, term)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "E: search db (%s): %v\n", repo, err)
-			os.Exit(1)
-		}
-		if len(matches) == 0 {
-			fmt.Fprintf(os.Stderr, "E: no package found for %q in %s\n", term, repo)
-			os.Exit(1)
-		}
-		pkg := matches[0]
-		for i := range matches {
-			if strings.EqualFold(term, matches[i].Name) {
-				pkg = matches[i]
+		for _, candidateRepo := range repos {
+			dburl := fmt.Sprintf(
+				"https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db",
+				candidateRepo,
+				candidateRepo,
+			)
+			dbpath := repodbpath(candidateRepo)
+
+			logStep("repo", "downloading %s repository database", candidateRepo)
+			if err := dlfile(context.Background(), dburl, dbpath); err != nil {
+				fmt.Fprintf(os.Stderr, "E: download database (%s): %v\n", candidateRepo, err)
+				os.Exit(1)
+			}
+
+			matches, err := lsdb(dbpath, term)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "E: search database (%s): %v\n", candidateRepo, err)
+				os.Exit(1)
+			}
+
+			for _, match := range matches {
+				if strings.EqualFold(term, match.Name) {
+					pkg = match
+					repo = candidateRepo
+					break
+				}
+			}
+
+			if repo != "" {
 				break
 			}
 		}
 
-		logStep("select", "selected %s %s (%s)", pkg.Name, pkg.Ver, pkg.Fname)
-		archurl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s", repo, pkg.Fname)
+		if repo == "" {
+			fmt.Fprintf(os.Stderr, "E: package %q not found in %s\n", term, strings.Join(repos, ", "))
+			os.Exit(1)
+		}
+
+		logStep("select", "selected %s %s from %s", pkg.Name, pkg.Ver, repo)
+
+		archurl := fmt.Sprintf(
+			"https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s",
+			repo,
+			pkg.Fname,
+		)
 		archpath := filepath.Join(os.TempDir(), pkg.Fname)
-		logStep("download", "fetching package archive to %s", archpath)
+
+		logStep("download", "fetching package archive from %s", archurl)
 		if err := dlfile(context.Background(), archurl, archpath); err != nil {
-			fmt.Fprintf(os.Stderr, "E: download %s: %v", pkg.Name, err)
+			fmt.Fprintf(os.Stderr, "E: download %s: %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
 
 		logStep("meta", "parsing package metadata")
 		metapkg, err := meta.Pkginfo(archpath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "E: parse %s pkg metadata: %v\n", pkg.Name, err)
+			fmt.Fprintf(os.Stderr, "E: parse %s package metadata: %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
+
 		logStep("install", "installing %s %s", metapkg.Name, metapkg.Ver)
 		if err := extract.Expkg(metapkg.Name, archpath); err != nil {
-			fmt.Fprintf(os.Stderr, "E: install pkg (%s): %v\n", pkg.Name, err)
+			fmt.Fprintf(os.Stderr, "E: install package (%s): %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
-		logSuccess("installed %s", metapkg.Name)
 
+		logSuccess("installed %s", metapkg.Name)
 	default:
 		fmt.Fprintf(os.Stderr, "E: unknown cmd: %q\nusage: stowy <(s)earch|(i)nstall> ...\n", os.Args[1])
 		os.Exit(2)

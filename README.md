@@ -1,54 +1,124 @@
 # stowy
 
-An experimental, user-local package manager prototype written in Go.
+`stowy` is an experimental, user-local package manager prototype written in Go. It is designed to explore how to install Arch Linux package archives into a home-directory layout without requiring `sudo`.
 
-`stowy` is a small project for exploring how to install Arch Linux package archives into a home-directory layout without `sudo`. The idea is to unpack packages under `~/.local/stowy/` and expose executables from `usr/bin` into `~/.local/bin`.
+The project downloads package metadata from Arch repositories, searches for packages, installs a selected archive into `~/.local/stowy/root`, and exposes executables from `usr/bin` as symlinks in `~/.local/bin`.
 
-This is intentionally a prototype, not a replacement for `pacman` or a hardened package manager. It is best treated as a learning tool and a sandbox for experimenting with package extraction and user-local installation patterns.
+This project is intentionally a prototype and is not a replacement for `pacman` or a hardened production package manager.
 
-## What it does today
+## Features
 
-- Reads package metadata from an Arch package archive's `.PKGINFO` section
-- Prints the package name, version, architecture, and declared dependencies
-- Extracts archive contents into `~/.local/stowy/<package-name>/`
-- Handles regular files, directories, and relative symlinks
-- Exposes runnable files from `usr/bin` as symlinks in `~/.local/bin`
-- Rejects unsafe archive paths and unsupported entry types
+- Search Arch repositories by package name or description
+- Download and inspect package metadata from `.db` files
+- Install local `.pkg.tar.zst` archives into a user-local prefix
+- Extract regular files, directories, and relative symlinks safely
+- Expose installed binaries from `usr/bin` into `~/.local/bin`
+- Remove installed package links and extracted files
+- Reject unsafe archive paths and unsupported archive entries
 
-## Example usage
+## Project layout
+
+- `main.go` — command handling and CLI entry point
+- `meta.go` / `meta/meta.go` — package metadata parsing
+- `install/extr.go` — archive extraction and binary exposure
+- `repo.go` — repository database download helpers
+- `search.go` — repository search logic
+
+## Install
 
 From the repository root:
 
-```sh
-go run . /path/to/package.pkg.tar.zst
+```bash
+go build ./...
 ```
 
-For example, on an Arch system with a cached package archive:
+This produces a binary named `stowy` in the current directory.
 
-```sh
-go run . /var/cache/pacman/pkg/go-tools-4:0.52.0-1-x86_64.pkg.tar.zst
+## Usage
+
+### Search a repository
+
+```bash
+./stowy s <repo> <term>
 ```
 
-The tool will print the package metadata and then extract the package contents under `~/.local/stowy/`.
+Example:
 
-## Current limitations
+```bash
+./stowy s core ripgrep
+```
 
-This project is still intentionally incomplete. At the moment it does not provide:
+This downloads the repository database and searches for matching packages.
+
+### Install a package from a repository
+
+```bash
+./stowy i <repo> <term>
+```
+
+Example:
+
+```bash
+./stowy i extra fd
+```
+
+This downloads the package archive, installs it under a user-local prefix, and creates symlinks for executables in `~/.local/bin`.
+
+### Install a local package archive
+
+```bash
+./stowy l <package.tar.zst>
+```
+
+Example:
+
+```bash
+./stowy l /var/cache/pacman/pkg/ripgrep-14.1.0-1-x86_64.pkg.tar.zst
+```
+
+### Remove an installed package
+
+```bash
+./stowy d <package>
+```
+
+Example:
+
+```bash
+./stowy d ripgrep
+```
+
+## Installation target
+
+Packages are extracted under:
+
+```bash
+~/.local/stowy/root
+```
+
+Executable links are exposed in:
+
+```bash
+~/.local/bin
+```
+
+## Safety and limitations
+
+This is a prototype for learning and experimentation. It does not yet provide:
 
 - dependency resolution
-- uninstall support
 - package database tracking
 - signature or checksum verification
-- conflict handling for already-installed files
-- a safe or general-purpose installation model for production use
+- conflict handling for existing files
+- complete uninstall management
+- a hardened or production-safe installation model
 
-## Project status
+Use it only with packages you are comfortable inspecting and testing in an isolated environment.
 
-The code is a prototype for experimenting with:
+## Why this exists
 
-- parsing Arch package metadata
-- reading `.pkg.tar.zst` archives
-- extracting files into a user-local prefix
-- exposing binaries from package contents into a user `bin` directory
+The goal is to explore the mechanics of user-local package installation patterns similar to those used in Linux distributions: read package metadata, extract files into a managed prefix, and make commands available without altering system-wide packages.
 
-Use it only with packages you are comfortable inspecting or testing in an isolated environment.
+## License
+
+This project does not currently declare a license file. If you plan to distribute or reuse it, check the repository state and add an explicit license before publication.

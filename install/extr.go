@@ -21,6 +21,7 @@ func Expkg(pkgname, archpath string) error {
 
 	// create a directory for each individual package
 	pkgdir := filepath.Join(home, ".local", "stowy", "root")
+	logStep("extract", "extracting package archive %s", archpath)
 	logStep("extract", "writing package files to %s", pkgdir)
 
 	if e := os.MkdirAll(pkgdir, 0o755); e != nil {
@@ -150,6 +151,7 @@ func expose(pkgdir string) error {
 		return fmt.Errorf("I/O: could not create cmd dir: %w", e)
 	}
 
+	logStep("link", "creating command links in %s", userbin)
 	for _, i := range entries {
 		src := filepath.Join(pkgbin, i.Name())
 		info, e := os.Stat(src)

@@ -18,7 +18,7 @@ func Expkg(pkgname, archpath string) error {
 
 	home, e := os.UserHomeDir()
 	if e != nil {
-		return fmt.Errorf("E: user is a homeless streetbegger.\nE: cannot find ~ dir\n")
+		return fmt.Errorf("E: user is a homeless streetbegger.\nE: cannot find ~ dir\nSTDERR: %w\n", e)
 		//lmfao
 	}
 
@@ -26,13 +26,13 @@ func Expkg(pkgname, archpath string) error {
 	pkgdir := filepath.Join(home, ".local", "stowy", pkgname)
 
 	if e := os.MkdirAll(pkgdir, 0o755); e != nil {
-		return fmt.Errorf("I/O: could not create directory %s of perms 755\n", pkgdir)
+		return fmt.Errorf("I/O: could not create directory %s of perms 755\nSTDERR: %w\n", pkgdir, e)
 	}
 
 	// open pkg archive
 	f, e := os.Open(archpath)
 	if e != nil {
-		return fmt.Errorf("I/O: could not open %s\n", archpath)
+		return fmt.Errorf("I/O: could not open %s\nSTDERR: %w\n", archpath, e)
 	}
 	defer f.Close()
 
@@ -41,7 +41,7 @@ func Expkg(pkgname, archpath string) error {
 	// from the decompressed stream
 	zr, e := zstd.NewReader(f)
 	if e != nil {
-		return fmt.Errorf("R: could not execute zstd reader for %v\n", f)
+		return fmt.Errorf("R: could not execute zstd reader for %v\nSTDERR: %w\n", f, e)
 	}
 	defer zr.Close()
 
@@ -69,18 +69,19 @@ func Expkg(pkgname, archpath string) error {
 				}
 			}
 			if e := expose(pkgdir); e != nil {
-				return fmt.Errorf("I/O: could not correctly expose to path\n")
+				return fmt.Errorf("I/O: could not correctly expose to path\nSTDERR: %w\n", e)
 			}
 			return nil
 		}
 		if e != nil {
-			return fmt.Errorf("R: Error reading %v:\n	%v", f, e)
+			return fmt.Errorf("R: Error reading %v:\nSTDERR: %w", f, e)
 		}
 
 		// skip pkg meta
 		if hdr.Name == ".PKGINFO" {
 			// we already previously read package metadata seperately
 			continue
+
 		}
 
 		if !filepath.IsLocal(hdr.Name) {
@@ -91,7 +92,7 @@ func Expkg(pkgname, archpath string) error {
 
 		// create parent dirs
 		if e := os.MkdirAll(filepath.Dir(targ), 0o755); e != nil {
-			return fmt.Errorf("I/O: could not create directory %v\n", filepath.Dir(targ))
+			return fmt.Errorf("I/O: could not create directory %v\nSTDERR: %w\n", filepath.Dir(targ), e)
 		}
 
 		switch hdr.Typeflag {
@@ -109,23 +110,23 @@ func Expkg(pkgname, archpath string) error {
 		case tar.TypeDir:
 			// create directories as a clone from tar
 			if err := os.MkdirAll(targ, 0o755); err != nil {
-				return fmt.Errorf("I/O: could not create directory %v\n", filepath.Dir(targ))
+				return fmt.Errorf("I/O: could not create directory %v\nSTDERR: %w", filepath.Dir(targ), e)
 			}
 		case tar.TypeReg, tar.TypeRegA:
 			// regulr files should create copy with its contents
 			out, e := os.OpenFile(targ, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
 			if e != nil {
-				return fmt.Errorf("I/o: could not create extracted files\n")
+				return fmt.Errorf("I/o: could not create extracted files\nSTDERR: %w", e)
 			}
 			if _, e := io.Copy(out, tr); e != nil {
 				out.Close()
 
-				return fmt.Errorf("I/O: could not copy extracted files\n")
+				return fmt.Errorf("I/O: could not copy extracted files\nSTDERR: %w\n", e)
 
 			}
 
 			if e := out.Close(); e != nil {
-				return fmt.Errorf("I/O: could not close %v\n", out)
+				return fmt.Errorf("I/O: could not close %v\nSTDERR: %w", out, e)
 			}
 		default:
 			return fmt.Errorf("E: %q has an unsupported archive entry of type %d\n", hdr.Name, hdr.Typeflag)

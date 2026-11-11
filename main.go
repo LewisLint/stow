@@ -43,9 +43,11 @@ func cstr(shit string) bool {
 	}
 	return true
 }
+
 func search(shit string) string {
 
 	return "" // filler functions for different
+
 	// future commands
 }
 
@@ -60,6 +62,7 @@ func list(dir string) []string {
 	}
 	var obj []string
 	for i := range o {
+
 		obj = append(obj, o[i].Name())
 	}
 

@@ -12,7 +12,8 @@ This project is intentionally a prototype and is not a replacement for `pacman` 
 - Download and inspect repository database metadata
 - Install packages from Arch repos or local archive files
 - Extract regular files, directories, and relative symlinks safely
-- Expose installed executables through `~/.local/bin`
+- Expose installed executables through launchers in `~/.local/bin`
+- Add the user-local `usr/lib` directory to each launcher's shared-library search path
 - Remove packages that were installed through `stowy`
 - Reject unsafe archive paths and unsupported package entries
 
@@ -104,11 +105,15 @@ Packages are extracted under:
 ~/.local/stowy
 ```
 
-Executable links are exposed in:
+Executables are exposed through launchers in:
 
 ```bash
 ~/.local/bin
 ```
+
+These launchers add `~/.local/stowy/root/usr/lib` to `LD_LIBRARY_PATH` for the
+launched program and its child processes. This lets programs find shared
+libraries installed by stowy without changing system linker configuration.
 
 ## Safety and limitations
 
@@ -118,7 +123,7 @@ This tool does not verify cryptographic hashes for downloaded package archives, 
 
 This is a prototype for learning and experimentation. It does not yet provide:
 
-- dependency resolution
+- automatic dependency resolution; install required dependency packages separately
 - package database tracking
 - signature verification or checksum validation
 - SHA-256 comparison against trusted digests

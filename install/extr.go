@@ -231,28 +231,68 @@ func expose(pkgdir string) error {
 			continue
 		}
 		link := filepath.Join(userbin, i.Name())
-		if _, e := os.Lstat(link); e == nil {
-			if _, e := os.Lstat(link); e == nil {
-				existingTarget, readErr := os.Readlink(link)
-				if readErr == nil && existingTarget == src {
+		launcher := commandLauncher(i.Name())
+		existing, e := os.Lstat(link)
+		if e == nil {
+			if existing.Mode()&os.ModeSymlink != 0 {
+				target, readErr := os.Readlink(link)
+				if readErr != nil {
+					return fmt.Errorf("I/O: could not inspect %s: %w", link, readErr)
+				}
+				if target != src {
+					return fmt.Errorf("E: %s already exists", link)
+				}
+			} else if existing.Mode().IsRegular() && existing.Size() == int64(len(launcher)) {
+				data, readErr := os.ReadFile(link)
+				if readErr != nil {
+					return fmt.Errorf("I/O: could not inspect %s: %w", link, readErr)
+				}
+				if string(data) == launcher {
 					continue
 				}
 				return fmt.Errorf("E: %s already exists", link)
-			} else if !os.IsNotExist(e) {
-				return fmt.Errorf("I/O: could not inspect %s: %w", link, e)
+			} else {
+				return fmt.Errorf("E: %s already exists", link)
 			}
-			return fmt.Errorf("E: %s already exists", link)
 		} else if !os.IsNotExist(e) {
 			return fmt.Errorf("I/O: could not inspect %s: %w", link, e)
 		}
-		if e := os.Symlink(src, link); e != nil {
-			return fmt.Errorf("E: link %q: %w", link, e)
+		temp, e := os.CreateTemp(userbin, ".stowy-launcher-*")
+		if e != nil {
+			return fmt.Errorf("I/O: create launcher for %q: %w", link, e)
+		}
+		tempName := temp.Name()
+		defer os.Remove(tempName)
+		if e := temp.Chmod(0o755); e != nil {
+			temp.Close()
+			return fmt.Errorf("I/O: set launcher permissions for %q: %w", link, e)
+		}
+		if _, e := temp.WriteString(launcher); e != nil {
+			temp.Close()
+			return fmt.Errorf("I/O: write launcher for %q: %w", link, e)
+		}
+		if e := temp.Close(); e != nil {
+			return fmt.Errorf("I/O: close launcher for %q: %w", link, e)
+		}
+		if e := os.Rename(tempName, link); e != nil {
+			return fmt.Errorf("E: install launcher %q: %w", link, e)
 		}
 		logStep("link", "exposed command %s", link)
 	}
 	logStep("bin", "command directory is %s; if zsh cannot find a newly installed command, run: rehash", userbin)
 	return nil
 
+}
+
+func commandLauncher(command string) string {
+	return "#!/bin/sh\n" +
+		"STOWY_ROOT=\"${HOME:?}/.local/stowy/root\"\n" +
+		"export LD_LIBRARY_PATH=\"$STOWY_ROOT/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\n" +
+		"exec \"$STOWY_ROOT/usr/bin/\"" + shellQuote(command) + " \"$@\"\n"
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func logStep(label, format string, args ...interface{}) {

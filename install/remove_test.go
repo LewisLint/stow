@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -25,8 +26,8 @@ func TestRemoveDeletesInstalledPackageFilesAndLinks(t *testing.T) {
 
 	root := filepath.Join(home, ".local", "stowy", "root")
 	command := filepath.Join(home, ".local", "bin", "demo")
-	if target, err := os.Readlink(command); err != nil || target != filepath.Join(root, "usr/bin/demo") {
-		t.Fatalf("command link = %q, %v", target, err)
+	if data, err := os.ReadFile(command); err != nil || string(data) != commandLauncher("demo") {
+		t.Fatalf("command launcher = %q, %v", data, err)
 	}
 
 	if err := Remove("demo"); err != nil {
@@ -41,6 +42,36 @@ func TestRemoveDeletesInstalledPackageFilesAndLinks(t *testing.T) {
 		if _, err := os.Lstat(path); !os.IsNotExist(err) {
 			t.Errorf("expected %q to be removed; lstat error = %v", path, err)
 		}
+	}
+}
+
+func TestCommandLauncherUsesUserLocalLibraries(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("LD_LIBRARY_PATH", "/existing")
+	archive := filepath.Join(t.TempDir(), "demo.pkg.tar.zst")
+	writeTestPackage(t, archive, map[string]string{
+		"usr/bin/demo": "#!/bin/sh\nprintf '%s\\n' \"$LD_LIBRARY_PATH\" \"$1\"\n",
+	})
+	commandPath := filepath.Join(home, ".local", "bin", "demo")
+	if err := os.MkdirAll(filepath.Dir(commandPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, ".local", "stowy", "root", "usr/bin/demo"), commandPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := Expkg("demo", archive); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command(commandPath, "hello")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run command launcher: %v: %s", err, output)
+	}
+	expected := filepath.Join(home, ".local", "stowy", "root", "usr", "lib") + ":/existing\nhello\n"
+	if string(output) != expected {
+		t.Fatalf("command output = %q, want %q", output, expected)
 	}
 }
 

@@ -49,15 +49,28 @@ func Remove(pkg string) error {
 		if _, shared := otherPaths[file]; shared {
 			continue
 		}
-		if strings.HasPrefix(file, "usr/bin/") {
+		if filepath.Dir(file) == filepath.Join("usr", "bin") {
 			link := filepath.Join(home, ".local", "bin", filepath.Base(file))
 			info, err := os.Lstat(link)
-			if err == nil && info.Mode()&os.ModeSymlink != 0 {
-				target, err := os.Readlink(link)
-				if err != nil {
-					return fmt.Errorf("E: inspect command link %q: %w", link, err)
+			if err == nil {
+				remove := false
+				if info.Mode()&os.ModeSymlink != 0 {
+					target, err := os.Readlink(link)
+					if err != nil {
+						return fmt.Errorf("E: inspect command link %q: %w", link, err)
+					}
+					remove = target == filepath.Join(root, file)
+				} else if info.Mode().IsRegular() {
+					launcher := commandLauncher(filepath.Base(file))
+					if info.Size() == int64(len(launcher)) {
+						data, err := os.ReadFile(link)
+						if err != nil {
+							return fmt.Errorf("E: inspect command launcher %q: %w", link, err)
+						}
+						remove = string(data) == launcher
+					}
 				}
-				if target == filepath.Join(root, file) {
+				if remove {
 					if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
 						return fmt.Errorf("E: remove command link %q: %w", link, err)
 					}

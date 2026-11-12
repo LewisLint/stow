@@ -201,6 +201,24 @@ func main() {
 			fmt.Fprintf(os.Stderr, "E: parse %s package metadata: %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
+		if err != nil {
+			// handle error
+		}
+		fmt.Printf("Package %v depends on:\n", pkg.Name)
+		for i := range metapkg.Depends {
+			fmt.Printf("\t%v\n", metapkg.Depends[i])
+		}
+		for _, req := range metapkg.Depends {
+			deppkg, deprepo, err := depends(req)
+			if err != nil {
+				fmt.Printf("Dependency %v could not be resolved\n", deppkg)
+			}
+			fmt.Printf("%s resolves to %s from %s\n", req, deppkg.Name, deprepo)
+		}
+		if err := extract.Expkg(metapkg.Name, archpath); err != nil {
+			// handle error
+			fmt.Fprintf(os.Stderr, "E: could not install dependency\n")
+		}
 
 		ls("install", "installing %s %s", metapkg.Name, metapkg.Ver)
 		if err := extract.Expkg(metapkg.Name, archpath); err != nil {

@@ -1,33 +1,31 @@
 # stowy
 
-`stowy` is an experimental Go-based package manager for Arch Linux that installs software into a user-local prefix instead of requiring `sudo`.
+`stowy` is a small, experimental Go tool for installing Arch Linux packages into a user-local prefix instead of writing to system-owned directories. It is designed as a learning project for understanding how package archives can be downloaded, extracted, and exposed from a home-directory layout without requiring `sudo`.
 
-It is designed to explore how package archives can be downloaded, extracted, and exposed through a home-directory layout while keeping system packages untouched. The project reads package metadata from Arch repositories, installs matching `.pkg.tar.zst` archives under `~/.local/stowy`, and exposes binaries from the package install tree through `~/.local/bin`.
+This is not a replacement for `pacman`, and it is not intended to be a hardened production package manager. It is a prototype for experimenting with user-space package installation patterns.
 
-This project is intentionally a prototype and is not a replacement for `pacman` or a hardened production package manager.
+## What it does
 
-## Features
+- Searches Arch repository databases by package name or description
+- Downloads repository metadata from Arch mirrors
+- Installs packages from Arch repositories or local `.pkg.tar.zst` archives
+- Extracts package contents into a managed prefix under `~/.local/stowy`
+- Exposes programs from that prefix via launchers placed in `~/.local/bin`
+- Removes packages previously installed by `stowy`
+- Rejects unsafe archive entries and unsupported package paths
 
-- Search Arch repositories by package name or description
-- Download and inspect repository database metadata
-- Install packages from Arch repos or local archive files
-- Extract regular files, directories, and relative symlinks safely
-- Expose installed executables through launchers in `~/.local/bin`
-- Add the user-local `usr/lib` directory to each launcher's shared-library search path
-- Remove packages that were installed through `stowy`
-- Reject unsafe archive paths and unsupported package entries
+## Why this exists
 
-## Why this project exists
-
-The goal is to explore the mechanics behind user-local package installation patterns commonly used on Linux systems: read metadata, unpack a package into a managed prefix, and make commands available without modifying system-wide files.
+The project explores a simple idea: keep package metadata and extracted files under a user-owned prefix, make binaries available on the `PATH`, and do it without modifying the root filesystem. That makes it useful for experiments, local tooling, and package-learning work outside of a full system package manager.
 
 ## Project layout
 
 - `main.go` — CLI entry point and command dispatch
-- `repo.go` — repository database download logic
+- `repo.go` — repo database download and retrieval logic
 - `search.go` — repository search helpers
 - `meta.go` and `meta/meta.go` — package metadata parsing
 - `install/` — archive extraction and installation logic
+- `testdata/` — fixture data used in tests
 
 ## Installation
 
@@ -37,11 +35,11 @@ From the repository root, build the binary:
 go build ./...
 ```
 
-This produces a `stowy` binary in the current directory.
+This produces a `stowy` executable in the working directory.
 
 ## Usage
 
-### Search for a package in a repository
+### Search a repository
 
 ```bash
 ./stowy s <repo> <term>
@@ -53,12 +51,12 @@ Example:
 ./stowy s core ripgrep
 ```
 
-This downloads the repository database and searches for matching packages.
+This downloads the repository database for the selected mirror and prints matching packages.
 
-### Install a package from a repository
+### Install a package from Arch repos
 
 ```bash
-./stowy i <term>
+./stowy i <package>
 ```
 
 Example:
@@ -67,7 +65,7 @@ Example:
 ./stowy i ripgrep
 ```
 
-`stowy` tries the `core`, `extra`, and `multilib` repositories and installs the best match.
+`stowy` checks the `core`, `extra`, and `multilib` repositories and installs the best match it finds.
 
 ### Install a local package archive
 
@@ -87,7 +85,7 @@ Example:
 ./stowy uninstall <package>
 ```
 
-Examples:
+Aliases supported by the CLI include:
 
 ```bash
 ./stowy d ripgrep
@@ -95,44 +93,37 @@ Examples:
 ./stowy delete ripgrep
 ```
 
-`d`, `delete`, and `remove` are aliases for `uninstall`.
-
 ## Install target
 
-Packages are extracted under:
+Package files are unpacked under:
 
 ```bash
 ~/.local/stowy
 ```
 
-Executables are exposed through launchers in:
+The CLI also creates launchers in:
 
 ```bash
 ~/.local/bin
 ```
 
-These launchers add `~/.local/stowy/root/usr/lib` to `LD_LIBRARY_PATH` for the
-launched program and its child processes. This lets programs find shared
-libraries installed by stowy without changing system linker configuration.
+These wrappers help make installed executables available on your `PATH` while giving the launched process access to the user-local library directory used by the package install.
 
 ## Safety and limitations
 
-Warning: this project is intentionally a learning prototype and is not a secure package installation workflow.
+Warning: this tool is intentionally a prototype, not a trusted package management workflow.
 
-This tool does not verify cryptographic hashes for downloaded package archives, does not compare SHA-256 against metadata, and currently trusts the repository metadata and package mirrors provided by the Arch ecosystem, including pacman-managed package sources. In other words, package integrity is not independently validated before extraction.
+At the moment, it does not verify package integrity before extracting files. It does not validate cryptographic signatures, compare checksums against trusted metadata, or defend against compromised mirrors or malicious archives in a production-grade way. It expects the repository metadata and package sources it downloads to be trusted by the user.
 
-This is a prototype for learning and experimentation. It does not yet provide:
+The current implementation also does not provide:
 
-- automatic dependency resolution; install required dependency packages separately
+- automatic dependency resolution
 - package database tracking
-- signature verification or checksum validation
-- SHA-256 comparison against trusted digests
-- conflict handling for existing files
-- hardened production-grade security guarantees
+- authentic signature verification
+- robust conflict handling
+- hardened production-security guarantees
 
-Use it only with packages you are comfortable inspecting and testing in an isolated environment. Because this runs in user space, it can still be dangerous if a package or mirror is compromised, malicious, or unexpectedly modified, even though it does not install to system-owned paths.
-
-The project is not intended to be used as a trusted package installation mechanism for unreviewed or attacker-controlled software.
+Use it only with packages you are comfortable inspecting and testing in a controlled environment. Even though it installs into a user-owned prefix instead of system directories, it can still be risky if a package source is compromised or unexpectedly modified.
 
 ## Quick start
 
@@ -144,7 +135,4 @@ ripgrep --version
 
 ## License
 
-This repository does not currently include a license file. If you plan to publish or redistribute the project, add an explicit license before doing so.
-
-
-*(note, this README.md was written by AI and verified by me, as I have a life. This project, however, was not written with the help of Artificial Intelligence)*
+This repository does not currently include a license file. If you plan to distribute or publish the project, add an explicit license before doing so.

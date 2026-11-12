@@ -75,6 +75,24 @@ func TestCommandLauncherUsesUserLocalLibraries(t *testing.T) {
 	}
 }
 
+func TestExpkgCanBeRepeatedWithTheSameSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	archive := filepath.Join(t.TempDir(), "neovim.pkg.tar.zst")
+	writeSymlinkTestPackage(t, archive, "usr/share/nvim/runtime/parser", "../../../lib/tree_sitter")
+
+	for range 2 {
+		if err := Expkg("neovim", archive); err != nil {
+			t.Fatalf("Expkg failed: %v", err)
+		}
+	}
+
+	link := filepath.Join(home, ".local", "stowy", "root", "usr/share/nvim/runtime/parser")
+	if target, err := os.Readlink(link); err != nil || target != "../../../lib/tree_sitter" {
+		t.Fatalf("symlink target = %q, %v", target, err)
+	}
+}
+
 func TestRemoveCleansPackageWhenCommandExposureFails(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -186,6 +204,33 @@ func TestRemoveDoesNotFollowReplacedParentSymlink(t *testing.T) {
 	}
 	if data, err := os.ReadFile(outsideFile); err != nil || string(data) != "keep me" {
 		t.Fatalf("outside file changed: %q, %v", data, err)
+	}
+}
+
+func writeSymlinkTestPackage(t *testing.T, path, name, target string) {
+	t.Helper()
+	var compressed bytes.Buffer
+	zw, err := zstd.NewWriter(&compressed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(zw)
+	if err := tw.WriteHeader(&tar.Header{
+		Name:     name,
+		Linkname: target,
+		Mode:     0o777,
+		Typeflag: tar.TypeSymlink,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, compressed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -70,6 +70,23 @@ func Expkg(pkgname, archpath string) error {
 			// this just stops the loop if we reached the end of the archive
 			for _, l := range symlinks {
 				lp := filepath.Join(pkgdir, l.name)
+				info, err := os.Lstat(lp)
+				if err == nil {
+					if info.Mode()&os.ModeSymlink == 0 {
+						return fmt.Errorf("I/O: package symlink %q conflicts with an existing non-symlink", lp)
+					}
+					existingTarget, err := os.Readlink(lp)
+					if err != nil {
+						return fmt.Errorf("I/O: inspect existing symlink %q: %w", lp, err)
+					}
+					if existingTarget != l.target {
+						return fmt.Errorf("I/O: package symlink %q conflicts with existing target %q", lp, existingTarget)
+					}
+					continue
+				}
+				if !os.IsNotExist(err) {
+					return fmt.Errorf("I/O: inspect package symlink %q: %w", lp, err)
+				}
 				if e := os.Symlink(l.target, lp); e != nil {
 					return fmt.Errorf("I/O: create symlink %q: %w", lp, e)
 				}

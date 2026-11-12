@@ -112,10 +112,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		ppkginf(pkg)
-		ls("install", "installing %s %s", pkg.Name, pkg.Ver)
-		if err := extract.Expkg(pkg.Name, os.Args[2]); err != nil {
-			fmt.Fprintf(os.Stderr, "E: extract error: %v\n", err)
+		if err := installPackage(pkg, "", os.Args[2], newInstallState()); err != nil {
+			fmt.Fprintf(os.Stderr, "E: install %s: %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
 		lS("installed %s", pkg.Name)
@@ -143,15 +141,8 @@ func main() {
 		repo := ""
 
 		for _, candidateRepo := range repos {
-			dburl := fmt.Sprintf(
-				"https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db",
-				candidateRepo,
-				candidateRepo,
-			)
-			dbpath := repodbpath(candidateRepo)
-
-			ls("repo", "downloading %s repository database", candidateRepo)
-			if err := dlfile(context.Background(), dburl, dbpath); err != nil {
+			dbpath, err := repoDatabase(candidateRepo)
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "E: download database (%s): %v\n", candidateRepo, err)
 				os.Exit(1)
 			}
@@ -182,51 +173,12 @@ func main() {
 
 		ls("select", "selected %s %s from %s", pkg.Name, pkg.Ver, repo)
 
-		archurl := fmt.Sprintf(
-			"https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s",
-			repo,
-			pkg.Fname,
-		)
-		archpath := filepath.Join(os.TempDir(), pkg.Fname)
-
-		ls("download", "fetching package archive from %s", archurl)
-		if err := dlfile(context.Background(), archurl, archpath); err != nil {
-			fmt.Fprintf(os.Stderr, "E: download %s: %v\n", pkg.Name, err)
-			os.Exit(1)
-		}
-
-		ls("meta", "parsing package metadata")
-		metapkg, err := meta.Pkginfo(archpath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "E: parse %s package metadata: %v\n", pkg.Name, err)
-			os.Exit(1)
-		}
-		if err != nil {
-			// handle error
-		}
-		fmt.Printf("Package %v depends on:\n", pkg.Name)
-		for i := range metapkg.Depends {
-			fmt.Printf("\t%v\n", metapkg.Depends[i])
-		}
-		for _, req := range metapkg.Depends {
-			deppkg, deprepo, err := depends(req)
-			if err != nil {
-				fmt.Printf("Dependency %v could not be resolved\n", deppkg)
-			}
-			fmt.Printf("%s resolves to %s from %s\n", req, deppkg.Name, deprepo)
-		}
-		if err := extract.Expkg(metapkg.Name, archpath); err != nil {
-			// handle error
-			fmt.Fprintf(os.Stderr, "E: could not install dependency\n")
-		}
-
-		ls("install", "installing %s %s", metapkg.Name, metapkg.Ver)
-		if err := extract.Expkg(metapkg.Name, archpath); err != nil {
+		if err := installPackage(pkg, repo, "", newInstallState()); err != nil {
 			fmt.Fprintf(os.Stderr, "E: install package (%s): %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
 
-		lS("installed %s", metapkg.Name)
+		lS("installed %s", pkg.Name)
 	default:
 		fmt.Fprintf(os.Stderr, "E: unknown cmd: %q\nusage: stowy <search|install|local|uninstall> ...\n", os.Args[1])
 		os.Exit(2)
@@ -287,24 +239,100 @@ func depends(dev string) (meta.Pkg, string, error) {
 	repos := []string{"core", "extra", "multilib"}
 
 	for _, repo := range repos {
-		dburl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db", repo, repo)
-		dbpath := repodbpath(repo)
-
-		if e := dlfile(context.Background(), dburl, dbpath); e != nil {
-			return meta.Pkg{}, "", e
+		dbpath, err := repoDatabase(repo)
+		if err != nil {
+			return meta.Pkg{}, "", err
 		}
-		matches, e := lsdb(dbpath, dev)
-		if e != nil {
-			return meta.Pkg{}, "", e
+		matches, err := lsdb(dbpath, dev)
+		if err != nil {
+			return meta.Pkg{}, "", err
 		}
 		for _, match := range matches {
-			if !strings.EqualFold(dev, match.Name) {
-				continue
+			if packageSatisfies(match, dev) {
+				return match, repo, nil
 			}
-
 		}
 	}
 	return meta.Pkg{}, "", fmt.Errorf("could not resolve dependency %q", dev)
+}
+
+var loadedRepoDatabases = make(map[string]string)
+
+func repoDatabase(repo string) (string, error) {
+	if path, ok := loadedRepoDatabases[repo]; ok {
+		return path, nil
+	}
+	url := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db", repo, repo)
+	path := repodbpath(repo)
+	ls("repo", "downloading %s repository database", repo)
+	if err := dlfile(context.Background(), url, path); err != nil {
+		return "", err
+	}
+	loadedRepoDatabases[repo] = path
+	return path, nil
+}
+
+type installState struct {
+	installing map[string]bool
+	installed  map[string]bool
+}
+
+func newInstallState() *installState {
+	return &installState{
+		installing: make(map[string]bool),
+		installed:  make(map[string]bool),
+	}
+}
+
+func installPackage(pkg meta.Pkg, repo, archivePath string, state *installState) error {
+	if state.installed[pkg.Name] {
+		return nil
+	}
+	if state.installing[pkg.Name] {
+		return fmt.Errorf("dependency cycle involving %q", pkg.Name)
+	}
+	state.installing[pkg.Name] = true
+	defer delete(state.installing, pkg.Name)
+
+	if archivePath == "" {
+		if repo == "" {
+			return fmt.Errorf("no repository specified for package %q", pkg.Name)
+		}
+		url := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s", repo, pkg.Fname)
+		archivePath = filepath.Join(os.TempDir(), filepath.Base(pkg.Fname))
+		ls("download", "fetching package archive from %s", url)
+		if err := dlfile(context.Background(), url, archivePath); err != nil {
+			return fmt.Errorf("download %s: %w", pkg.Name, err)
+		}
+	}
+
+	ls("meta", "parsing %s package metadata", pkg.Name)
+	packageInfo, err := meta.Pkginfo(archivePath)
+	if err != nil {
+		return fmt.Errorf("parse %s package metadata: %w", pkg.Name, err)
+	}
+	if pkg.Name != "" && packageInfo.Name != pkg.Name {
+		return fmt.Errorf("archive package name %q does not match repository package %q", packageInfo.Name, pkg.Name)
+	}
+
+	fmt.Printf("Package %s depends on:\n", packageInfo.Name)
+	for _, requirement := range packageInfo.Depends {
+		fmt.Printf("\t%s\n", requirement)
+		dependency, dependencyRepo, err := depends(requirement)
+		if err != nil {
+			return fmt.Errorf("resolve dependency %q of %s: %w", requirement, packageInfo.Name, err)
+		}
+		if err := installPackage(dependency, dependencyRepo, "", state); err != nil {
+			return fmt.Errorf("install dependency %q of %s: %w", requirement, packageInfo.Name, err)
+		}
+	}
+
+	ls("install", "installing %s %s", packageInfo.Name, packageInfo.Ver)
+	if err := extract.Expkg(packageInfo.Name, archivePath); err != nil {
+		return fmt.Errorf("extract package %s: %w", packageInfo.Name, err)
+	}
+	state.installed[pkg.Name] = true
+	return nil
 }
 func checkPaths(path string) error {
 	info, err := os.Stat(path)

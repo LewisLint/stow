@@ -12,20 +12,21 @@ import (
 )
 
 type Pkg struct { // pretty fucking obvious what this mf does
-	Depends []string
-	Name    string // it stores data
-	Fname   string
-	Base    string
-	Ver     string // shocking i know
-	Desk    string
-	Csize   int
-	Isize   int
-	Sha     string
-	Pgp     string
-	Url     string
-	Lic     string
-	Archbtw string
-	Bdate   string
+	Depends  []string
+	Provides []string
+	Name     string // it stores data
+	Fname    string
+	Base     string
+	Ver      string // shocking i know
+	Desk     string
+	Csize    int
+	Isize    int
+	Sha      string
+	Pgp      string
+	Url      string
+	Lic      string
+	Archbtw  string
+	Bdate    string
 }
 
 func Read(s string) string { // read bytes from a
@@ -44,24 +45,29 @@ func Parsen(dat string) Pkg {
 	var pkg Pkg
 	field := ""
 
-	for _, l := range strings.Split(dat, "\n") { // seperates lines by return ('\n')
-		if strings.HasPrefix(l, "%") && // this checks if the line seperated above
-			strings.HasSuffix(l, "%") { // starts and ends with '%'
-			field = l
+	for _, line := range strings.Split(dat, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "%") && strings.HasSuffix(line, "%") {
+			field = line
+			continue
+		}
+		if line == "" {
 			continue
 		}
 		switch field {
 		case "%NAME%":
-			pkg.Name = l
+			pkg.Name = line
 		case "%VERSION%":
-			pkg.Ver = l
+			pkg.Ver = line
 		case "%DESC%":
-			pkg.Desk = l
+			pkg.Desk = line
 		case "%FILENAME%":
-			pkg.Fname = l
+			pkg.Fname = line
+		case "%DEPENDS%":
+			pkg.Depends = append(pkg.Depends, line)
+		case "%PROVIDES%":
+			pkg.Provides = append(pkg.Provides, line)
 		}
-		field = ""
-
 	}
 	return pkg // return the output of something?
 }

@@ -57,7 +57,13 @@ func Expkg(pkgname, archpath string) error {
 		target string
 	}
 
+	type pendhardlink struct {
+		name   string
+		target string
+	}
+
 	var symlinks []pendsymlink
+	var hardlinks []pendhardlink
 	var files []string
 	var dirs []string
 
@@ -66,6 +72,33 @@ func Expkg(pkgname, archpath string) error {
 		hdr, e := tr.Next()
 
 		if e == io.EOF {
+			for len(hardlinks) > 0 {
+				var pending []pendhardlink
+				created := false
+				for _, l := range hardlinks {
+					src := filepath.Join(pkgdir, l.target)
+					info, err := os.Lstat(src)
+					if os.IsNotExist(err) {
+						pending = append(pending, l)
+						continue
+					}
+					if err != nil {
+						return fmt.Errorf("I/O: inspect hard link target %q: %w", src, err)
+					}
+					if !info.Mode().IsRegular() {
+						return fmt.Errorf("I/O: hard link target %q is not a regular file", src)
+					}
+					dst := filepath.Join(pkgdir, l.name)
+					if err := os.Link(src, dst); err != nil {
+						return fmt.Errorf("I/O: create hard link %q to %q: %w", dst, src, err)
+					}
+					created = true
+				}
+				if len(pending) > 0 && !created {
+					return fmt.Errorf("E: unresolved package hard link %q to %q", pending[0].name, pending[0].target)
+				}
+				hardlinks = pending
+			}
 			// we dont need to create an error message
 			// this just stops the loop if we reached the end of the archive
 			for _, l := range symlinks {
@@ -134,6 +167,19 @@ func Expkg(pkgname, archpath string) error {
 				return fmt.Errorf("I/O: unsafe symlink %q > %q: %w", name, hdr.Linkname, err)
 			}
 			symlinks = append(symlinks, pendsymlink{
+				name:   name,
+				target: target,
+			})
+			files = append(files, name)
+		case tar.TypeLink:
+			if !filepath.IsLocal(hdr.Linkname) {
+				return fmt.Errorf("I/O: unsafe hard link %q > %q", name, hdr.Linkname)
+			}
+			target := filepath.Clean(hdr.Linkname)
+			if target == "." {
+				return fmt.Errorf("I/O: invalid hard link target %q", hdr.Linkname)
+			}
+			hardlinks = append(hardlinks, pendhardlink{
 				name:   name,
 				target: target,
 			})

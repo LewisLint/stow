@@ -93,6 +93,41 @@ func TestExpkgCanBeRepeatedWithTheSameSymlink(t *testing.T) {
 	}
 }
 
+func TestExpkgExtractsHardlinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	archive := filepath.Join(t.TempDir(), "tzdata.pkg.tar.zst")
+	writeHardlinkTestPackage(t, archive, "usr/share/zoneinfo/Africa/Accra", "usr/share/zoneinfo/Africa/Abidjan", "zone data")
+
+	if err := Expkg("tzdata", archive); err != nil {
+		t.Fatal(err)
+	}
+
+	root := filepath.Join(home, ".local", "stowy", "root")
+	source, err := os.Stat(filepath.Join(root, "usr/share/zoneinfo/Africa/Accra"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := os.Stat(filepath.Join(root, "usr/share/zoneinfo/Africa/Abidjan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(source, link) {
+		t.Fatal("extracted hard-link entries are not the same file")
+	}
+}
+
+func TestExpkgRejectsHardlinksOutsideInstallRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	archive := filepath.Join(t.TempDir(), "unsafe.pkg.tar.zst")
+	writeHardlinkTestPackage(t, archive, "usr/share/file", "../outside", "contents")
+
+	if err := Expkg("unsafe", archive); err == nil {
+		t.Fatal("Expkg accepted a hard link target outside the install root")
+	}
+}
+
 func TestRemoveCleansPackageWhenCommandExposureFails(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -220,6 +255,43 @@ func writeSymlinkTestPackage(t *testing.T, path, name, target string) {
 		Linkname: target,
 		Mode:     0o777,
 		Typeflag: tar.TypeSymlink,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, compressed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeHardlinkTestPackage(t *testing.T, path, source, link, contents string) {
+	t.Helper()
+	var compressed bytes.Buffer
+	zw, err := zstd.NewWriter(&compressed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(zw)
+	if err := tw.WriteHeader(&tar.Header{
+		Name:     source,
+		Mode:     0o644,
+		Size:     int64(len(contents)),
+		Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(contents)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{
+		Name:     link,
+		Linkname: source,
+		Typeflag: tar.TypeLink,
 	}); err != nil {
 		t.Fatal(err)
 	}

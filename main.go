@@ -35,7 +35,7 @@ func main() {
 	}
 
 	for _, p := range []string{paths.Bin, paths.Lib, paths.Share} {
-		if err := checkPaths(p); err != nil {
+		if err := cp(p); err != nil {
 			fmt.Fprintf(os.Stderr, "E: %v\n", err)
 			os.Exit(1)
 		}
@@ -64,7 +64,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "E: an error occured when symlinking stowy to ~/.local/bin/\ncontinuing anyways...")
 	}
 
-	//		if err := checkPaths(path); err != nil {
+	//		if err := cp(path); err != nil {
 	//		fmt.Fprintf(os.Stderr, "E: could not start because Stowy is a bitch about ~/.local/stowy/usr/bin/: %v\n", err)
 	//		os.Exit(1)
 	//	}
@@ -334,7 +334,7 @@ func installPackage(pkg meta.Pkg, repo, archivePath string, state *installState)
 	state.installed[pkg.Name] = true
 	return nil
 }
-func checkPaths(path string) error {
+func cp(path string) error {
 	info, err := os.Stat(path)
 
 	if os.IsNotExist(err) {

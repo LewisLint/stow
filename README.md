@@ -1,42 +1,46 @@
 # stowy
 
-`stowy` is an experimental, user-local package manager prototype written in Go. It is designed to explore how to install Arch Linux package archives into a home-directory layout without requiring `sudo`.
+`stowy` is an experimental Go-based package manager for Arch Linux that installs software into a user-local prefix instead of requiring `sudo`.
 
-The project downloads package metadata from Arch repositories, searches for packages, installs a selected archive into `~/.local/stowy/root`, and exposes executables from `usr/bin` as symlinks in `~/.local/bin`.
+It is designed to explore how package archives can be downloaded, extracted, and exposed through a home-directory layout while keeping system packages untouched. The project reads package metadata from Arch repositories, installs matching `.pkg.tar.zst` archives under `~/.local/stowy`, and exposes binaries from the package install tree through `~/.local/bin`.
 
 This project is intentionally a prototype and is not a replacement for `pacman` or a hardened production package manager.
 
 ## Features
 
 - Search Arch repositories by package name or description
-- Download and inspect package metadata from `.db` files
-- Install local `.pkg.tar.zst` archives into a user-local prefix
+- Download and inspect repository database metadata
+- Install packages from Arch repos or local archive files
 - Extract regular files, directories, and relative symlinks safely
-- Expose installed binaries from `usr/bin` into `~/.local/bin`
-- Remove files and command links for packages installed by stowy
-- Reject unsafe archive paths and unsupported archive entries
+- Expose installed executables through `~/.local/bin`
+- Remove packages that were installed through `stowy`
+- Reject unsafe archive paths and unsupported package entries
+
+## Why this project exists
+
+The goal is to explore the mechanics behind user-local package installation patterns commonly used on Linux systems: read metadata, unpack a package into a managed prefix, and make commands available without modifying system-wide files.
 
 ## Project layout
 
-- `main.go` — command handling and CLI entry point
-- `meta.go` / `meta/meta.go` — package metadata parsing
-- `install/extr.go` — archive extraction and binary exposure
-- `repo.go` — repository database download helpers
-- `search.go` — repository search logic
+- `main.go` — CLI entry point and command dispatch
+- `repo.go` — repository database download logic
+- `search.go` — repository search helpers
+- `meta.go` and `meta/meta.go` — package metadata parsing
+- `install/` — archive extraction and installation logic
 
-## Install
+## Installation
 
-From the repository root:
+From the repository root, build the binary:
 
 ```bash
 go build ./...
 ```
 
-This produces a binary named `stowy` in the current directory.
+This produces a `stowy` binary in the current directory.
 
 ## Usage
 
-### Search a repository
+### Search for a package in a repository
 
 ```bash
 ./stowy s <repo> <term>
@@ -53,16 +57,16 @@ This downloads the repository database and searches for matching packages.
 ### Install a package from a repository
 
 ```bash
-./stowy i <repo> <term>
+./stowy i <term>
 ```
 
 Example:
 
 ```bash
-./stowy i extra fd
+./stowy i ripgrep
 ```
 
-This downloads the package archive, installs it under a user-local prefix, and creates symlinks for executables in `~/.local/bin`.
+`stowy` tries the `core`, `extra`, and `multilib` repositories and installs the best match.
 
 ### Install a local package archive
 
@@ -76,26 +80,28 @@ Example:
 ./stowy l /var/cache/pacman/pkg/ripgrep-14.1.0-1-x86_64.pkg.tar.zst
 ```
 
-### Remove an installed package
+### Remove a package
 
 ```bash
-./stowy d <package>
+./stowy uninstall <package>
 ```
 
-Example:
+Examples:
 
 ```bash
-./stowy uninstall ripgrep
+./stowy d ripgrep
+./stowy remove ripgrep
+./stowy delete ripgrep
 ```
 
-`d`, `delete`, and `remove` are aliases for `uninstall`. Uninstall uses the manifest recorded during installation. Packages installed before manifests were added cannot be removed by stowy.
+`d`, `delete`, and `remove` are aliases for `uninstall`.
 
-## Installation target
+## Install target
 
 Packages are extracted under:
 
 ```bash
-~/.local/stowy/root
+~/.local/stowy
 ```
 
 Executable links are exposed in:
@@ -106,20 +112,34 @@ Executable links are exposed in:
 
 ## Safety and limitations
 
+Warning: this project is intentionally a learning prototype and is not a secure package installation workflow.
+
+This tool does not verify cryptographic hashes for downloaded package archives, does not compare SHA-256 against metadata, and currently trusts the repository metadata and package mirrors provided by the Arch ecosystem, including pacman-managed package sources. In other words, package integrity is not independently validated before extraction.
+
 This is a prototype for learning and experimentation. It does not yet provide:
 
 - dependency resolution
 - package database tracking
-- signature or checksum verification
+- signature verification or checksum validation
+- SHA-256 comparison against trusted digests
 - conflict handling for existing files
-- a hardened or production-safe installation model
+- hardened production-grade security guarantees
 
-Use it only with packages you are comfortable inspecting and testing in an isolated environment.
+Use it only with packages you are comfortable inspecting and testing in an isolated environment. Because this runs in user space, it can still be dangerous if a package or mirror is compromised, malicious, or unexpectedly modified, even though it does not install to system-owned paths.
 
-## Why this exists
+The project is not intended to be used as a trusted package installation mechanism for unreviewed or attacker-controlled software.
 
-The goal is to explore the mechanics of user-local package installation patterns similar to those used in Linux distributions: read package metadata, extract files into a managed prefix, and make commands available without altering system-wide packages.
+## Quick start
+
+```bash
+go build ./...
+./stowy i ripgrep
+ripgrep --version
+```
 
 ## License
 
-This project does not currently declare a license file. If you plan to distribute or reuse it, check the repository state and add an explicit license before publication.
+This repository does not currently include a license file. If you plan to publish or redistribute the project, add an explicit license before doing so.
+
+
+*(note, this README.md was written by AI and verified by me, as I have a life. This project, however, was not written with the help of Artificial Intelligence)*

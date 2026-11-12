@@ -2,10 +2,12 @@ package extract
 
 import (
 	"archive/tar"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
@@ -17,6 +19,9 @@ func Expkg(pkgname, archpath string) error {
 	home, e := os.UserHomeDir()
 	if e != nil {
 		return fmt.Errorf("E: user is a homeless streetbegger.\nE: cannot find ~ dir\nSTDERR: %w\n", e)
+	}
+	if !validPackageName(pkgname) {
+		return fmt.Errorf("E: invalid package name %q", pkgname)
 	}
 
 	// create a directory for each individual package
@@ -53,6 +58,8 @@ func Expkg(pkgname, archpath string) error {
 	}
 
 	var symlinks []pendsymlink
+	var files []string
+	var dirs []string
 
 	// read every package entry
 	for {
@@ -66,6 +73,9 @@ func Expkg(pkgname, archpath string) error {
 				if e := os.Symlink(l.target, lp); e != nil {
 					return fmt.Errorf("I/O: create symlink %q: %w", lp, e)
 				}
+			}
+			if e := writeManifest(home, pkgname, files, dirs); e != nil {
+				return fmt.Errorf("I/O: could not record installed package %q: %w", pkgname, e)
 			}
 			if e := expose(pkgdir); e != nil {
 				return fmt.Errorf("I/O: could not correctly expose to path\nSTDERR: %w\n", e)
@@ -87,8 +97,12 @@ func Expkg(pkgname, archpath string) error {
 		if !filepath.IsLocal(hdr.Name) {
 			return fmt.Errorf("P: unsafe archive path %q\n", hdr.Name)
 		}
+		name := filepath.Clean(hdr.Name)
+		if name == "." && hdr.Typeflag == tar.TypeDir {
+			continue
+		}
 		// build target path in the pkgdir
-		targ := filepath.Join(pkgdir, hdr.Name)
+		targ := filepath.Join(pkgdir, name)
 
 		// create parent dirs
 		if e := os.MkdirAll(filepath.Dir(targ), 0o755); e != nil {
@@ -98,19 +112,21 @@ func Expkg(pkgname, archpath string) error {
 		switch hdr.Typeflag {
 
 		case tar.TypeSymlink:
-			target, err := localSymlinkTarget(hdr.Name, hdr.Linkname)
+			target, err := localSymlinkTarget(name, hdr.Linkname)
 			if err != nil {
-				return fmt.Errorf("I/O: unsafe symlink %q > %q: %w", hdr.Name, hdr.Linkname, err)
+				return fmt.Errorf("I/O: unsafe symlink %q > %q: %w", name, hdr.Linkname, err)
 			}
 			symlinks = append(symlinks, pendsymlink{
-				name:   hdr.Name,
+				name:   name,
 				target: target,
 			})
+			files = append(files, name)
 		case tar.TypeDir:
 			// create directories as a clone from tar
 			if err := os.MkdirAll(targ, 0o755); err != nil {
 				return fmt.Errorf("I/O: could not create directory %v: %w", targ, err)
 			}
+			dirs = append(dirs, name)
 		case tar.TypeReg, tar.TypeRegA:
 			// regulr files should create copy with its contents
 			out, e := os.OpenFile(targ, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
@@ -127,6 +143,7 @@ func Expkg(pkgname, archpath string) error {
 			if e := out.Close(); e != nil {
 				return fmt.Errorf("I/O: could not close %v\nSTDERR: %w", out, e)
 			}
+			files = append(files, name)
 		default:
 			return fmt.Errorf("E: %q has an unsupported archive entry of type %d\n", hdr.Name, hdr.Typeflag)
 
@@ -134,6 +151,51 @@ func Expkg(pkgname, archpath string) error {
 
 	}
 
+}
+
+type packageManifest struct {
+	Package string   `json:"package"`
+	Files   []string `json:"files"`
+	Dirs    []string `json:"dirs"`
+}
+
+func validPackageName(pkg string) bool {
+	return pkg != "" && pkg != "." && pkg != ".." &&
+		filepath.IsLocal(pkg) && filepath.Base(pkg) == pkg
+}
+
+func manifestPath(home, pkg string) string {
+	return filepath.Join(home, ".local", "stowy", "installed", pkg+".json")
+}
+
+func writeManifest(home, pkg string, files, dirs []string) error {
+	sort.Strings(files)
+	sort.Strings(dirs)
+	data, err := json.Marshal(packageManifest{Package: pkg, Files: files, Dirs: dirs})
+	if err != nil {
+		return err
+	}
+	path := manifestPath(home, pkg)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(path), ".manifest-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+	if err := temp.Chmod(0o600); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.Write(data); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temp.Name(), path)
 }
 
 func expose(pkgdir string) error {

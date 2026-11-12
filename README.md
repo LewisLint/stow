@@ -13,7 +13,7 @@ This project is intentionally a prototype and is not a replacement for `pacman` 
 - Install local `.pkg.tar.zst` archives into a user-local prefix
 - Extract regular files, directories, and relative symlinks safely
 - Expose installed binaries from `usr/bin` into `~/.local/bin`
-- Remove installed package links and extracted files
+- Remove files and command links for packages installed by stowy
 - Reject unsafe archive paths and unsupported archive entries
 
 ## Project layout
@@ -85,8 +85,10 @@ Example:
 Example:
 
 ```bash
-./stowy d ripgrep
+./stowy uninstall ripgrep
 ```
+
+`d`, `delete`, and `remove` are aliases for `uninstall`. Uninstall uses the manifest recorded during installation. Packages installed before manifests were added cannot be removed by stowy.
 
 ## Installation target
 
@@ -110,7 +112,6 @@ This is a prototype for learning and experimentation. It does not yet provide:
 - package database tracking
 - signature or checksum verification
 - conflict handling for existing files
-- complete uninstall management
 - a hardened or production-safe installation model
 
 Use it only with packages you are comfortable inspecting and testing in an isolated environment.

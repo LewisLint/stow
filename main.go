@@ -41,12 +41,37 @@ func main() {
 		}
 	}
 
+	// symlink Stowy* to ~/.local/bin
+
+	exe, err := os.Executable()
+	if err != nil {
+		panic(err) // im too fucking lazy to make a error message for this
+	}
+	usrbin := filepath.Join(home, ".local", "bin", "stowy")
+	fmt.Printf("%v\n", usrbin)
+	dir := filepath.Dir(exe)
+	path := filepath.Join(dir, "stowy")
+	fmt.Printf("%v\n\n", path)
+
+	_, e := os.Lstat(usrbin)
+	if e == nil {
+	} else if os.IsNotExist(e) {
+		fmt.Printf("Symlink %v > %v does not exist\nCreating symlink...\n", path, usrbin)
+		err := os.Symlink(path, usrbin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "E: failed to create symlink: %v\n", err)
+			fmt.Printf("\nContinuing anyways...")
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "E: an error occured when symlinking stowy to ~/.local/bin/\ncontinuing anyways...")
+	}
+
 	//		if err := checkPaths(path); err != nil {
 	//		fmt.Fprintf(os.Stderr, "E: could not start because Stowy is a bitch about ~/.local/stowy/usr/bin/: %v\n", err)
 	//		os.Exit(1)
 	//	}
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "E: usage: stowy <(S)earch/(I)nstall/(L)ocal> ...")
+		fmt.Fprintln(os.Stderr, "E: usage: stowy <search|install|local|uninstall> ...")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -97,15 +122,16 @@ func main() {
 		}
 		lS("installed %s", pkg.Name)
 
-	case "d":
+	case "d", "delete", "remove", "uninstall":
 		if len(os.Args) != 3 {
-			fmt.Fprintf(os.Stderr, "E: usage: stowy  d <pkg>\n")
+			fmt.Fprintln(os.Stderr, "E: usage: stowy uninstall <package>")
 			os.Exit(2)
 		}
 		if err := extract.Remove(os.Args[2]); err != nil {
 			fmt.Fprintf(os.Stderr, "E: remove error: %v\n", err)
 			os.Exit(1)
 		}
+		lS("removed %s", os.Args[2])
 	case "i":
 		if len(os.Args) != 3 {
 			fmt.Fprintln(os.Stderr, "E: usage: stowy i <package>")
@@ -186,7 +212,7 @@ func main() {
 
 		lS("installed %s", metapkg.Name)
 	default:
-		fmt.Fprintf(os.Stderr, "E: unknown cmd: %q\nusage: stowy <(s)earch|(i)nstall> ...\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "E: unknown cmd: %q\nusage: stowy <search|install|local|uninstall> ...\n", os.Args[1])
 		os.Exit(2)
 	}
 }

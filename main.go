@@ -48,10 +48,8 @@ func main() {
 		panic(err) // im too fucking lazy to make a error message for this
 	}
 	usrbin := filepath.Join(home, ".local", "bin", "stowy")
-	fmt.Printf("%v\n", usrbin)
 	dir := filepath.Dir(exe)
 	path := filepath.Join(dir, "stowy")
-	fmt.Printf("%v\n\n", path)
 
 	_, e := os.Lstat(usrbin)
 	if e == nil {

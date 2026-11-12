@@ -1,3 +1,6 @@
 .*/
-go.mod
-go*
+go.sum
+testdata/
+stowy
+stow
+uninstall/

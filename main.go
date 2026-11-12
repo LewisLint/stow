@@ -40,7 +40,7 @@ func main() {
 		dburl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db", repo, repo)
 		dbpath := repodbpath(repo)
 
-		logStep("repo", "downloading %s database", repo)
+		ls("repo", "downloading %s database", repo)
 		if err := dlfile(context.Background(), dburl, dbpath); err != nil {
 			fmt.Fprintf(os.Stderr, "E: downloading repo db (%s): %v\n", repo, err)
 			os.Exit(1)
@@ -52,30 +52,30 @@ func main() {
 			os.Exit(1)
 		}
 		if len(matches) == 0 {
-			logWarn("no package matches for %q in %s", term, repo)
+			lw("no package matches for %q in %s", term, repo)
 			os.Exit(0)
 		}
-		printPackageList(matches)
+		pplist(matches)
 
 	case "l":
 		if len(os.Args) != 3 {
 			fmt.Fprintln(os.Stderr, "E: usage: stowy l <package.tar.zst>")
 			os.Exit(2)
 		}
-		logStep("archive", "reading local package metadata from %s", os.Args[2])
+		ls("archive", "reading local package metadata from %s", os.Args[2])
 		pkg, err := meta.Pkginfo(os.Args[2])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "E: %v\n", err)
 			os.Exit(1)
 		}
 
-		printPackageInfo(pkg)
-		logStep("install", "installing %s %s", pkg.Name, pkg.Ver)
+		ppkginf(pkg)
+		ls("install", "installing %s %s", pkg.Name, pkg.Ver)
 		if err := extract.Expkg(pkg.Name, os.Args[2]); err != nil {
 			fmt.Fprintf(os.Stderr, "E: extract error: %v\n", err)
 			os.Exit(1)
 		}
-		logSuccess("installed %s", pkg.Name)
+		lS("installed %s", pkg.Name)
 
 	case "d":
 		if len(os.Args) != 3 {
@@ -106,7 +106,7 @@ func main() {
 			)
 			dbpath := repodbpath(candidateRepo)
 
-			logStep("repo", "downloading %s repository database", candidateRepo)
+			ls("repo", "downloading %s repository database", candidateRepo)
 			if err := dlfile(context.Background(), dburl, dbpath); err != nil {
 				fmt.Fprintf(os.Stderr, "E: download database (%s): %v\n", candidateRepo, err)
 				os.Exit(1)
@@ -136,7 +136,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		logStep("select", "selected %s %s from %s", pkg.Name, pkg.Ver, repo)
+		ls("select", "selected %s %s from %s", pkg.Name, pkg.Ver, repo)
 
 		archurl := fmt.Sprintf(
 			"https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s",
@@ -145,46 +145,46 @@ func main() {
 		)
 		archpath := filepath.Join(os.TempDir(), pkg.Fname)
 
-		logStep("download", "fetching package archive from %s", archurl)
+		ls("download", "fetching package archive from %s", archurl)
 		if err := dlfile(context.Background(), archurl, archpath); err != nil {
 			fmt.Fprintf(os.Stderr, "E: download %s: %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
 
-		logStep("meta", "parsing package metadata")
+		ls("meta", "parsing package metadata")
 		metapkg, err := meta.Pkginfo(archpath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "E: parse %s package metadata: %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
 
-		logStep("install", "installing %s %s", metapkg.Name, metapkg.Ver)
+		ls("install", "installing %s %s", metapkg.Name, metapkg.Ver)
 		if err := extract.Expkg(metapkg.Name, archpath); err != nil {
 			fmt.Fprintf(os.Stderr, "E: install package (%s): %v\n", pkg.Name, err)
 			os.Exit(1)
 		}
 
-		logSuccess("installed %s", metapkg.Name)
+		lS("installed %s", metapkg.Name)
 	default:
 		fmt.Fprintf(os.Stderr, "E: unknown cmd: %q\nusage: stowy <(s)earch|(i)nstall> ...\n", os.Args[1])
 		os.Exit(2)
 	}
 }
 
-func logStep(label, format string, args ...interface{}) {
+func ls(label, format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Printf("%s%s%s%s %s\n", colorBold, colorCyan, label, colorReset, msg)
 }
 
-func logSuccess(format string, args ...interface{}) {
+func lS(format string, args ...interface{}) {
 	fmt.Printf("%s%s✔%s %s\n", colorBold, colorGreen, colorReset, fmt.Sprintf(format, args...))
 }
 
-func logWarn(format string, args ...interface{}) {
+func lw(format string, args ...interface{}) {
 	fmt.Printf("%s%s!%s %s\n", colorBold, colorWarn, colorReset, fmt.Sprintf(format, args...))
 }
 
-func printPackageInfo(pkg meta.Pkg) {
+func ppkginf(pkg meta.Pkg) {
 	fmt.Printf("\n%sPackage%s %s %s\n", colorBold, colorReset, pkg.Name, pkg.Ver)
 	fmt.Printf("  arch: %s\n", pkg.Archbtw)
 	if len(pkg.Depends) > 0 {
@@ -198,7 +198,7 @@ func printPackageInfo(pkg meta.Pkg) {
 	fmt.Println()
 }
 
-func printPackageList(matches []meta.Pkg) {
+func pplist(matches []meta.Pkg) {
 	fmt.Printf("\n%sResults%s\n", colorBold, colorReset)
 	for _, pkg := range matches {
 		fmt.Printf("  %s %s - %s\n", pkg.Name, pkg.Ver, pkg.Desk)
@@ -219,4 +219,28 @@ func list(dir string) []string {
 	}
 
 	return obj
+}
+
+func depends(dev string) (meta.Pkg, string, error) {
+	repos := []string{"core", "extra", "multilib"}
+
+	for _, repo := range repos {
+		dburl := fmt.Sprintf("https://geo.mirror.pkgbuild.com/%s/os/x86_64/%s.db", repo, repo)
+		dbpath := repodbpath(repo)
+
+		if e := dlfile(context.Background(), dburl, dbpath); e != nil {
+			return meta.Pkg{}, "", e
+		}
+		matches, e := lsdb(dbpath, dev)
+		if e != nil {
+			return meta.Pkg{}, "", e
+		}
+		for _, match := range matches {
+			if !strings.EqualFold(dev, match.Name) {
+				continue
+			}
+
+		}
+	}
+	return meta.Pkg{}, "", fmt.Errorf("could not resolve dependency %q", dev)
 }

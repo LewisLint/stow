@@ -139,10 +139,16 @@ func Expkg(pkgname, archpath string) error {
 func expose(pkgdir string) error {
 	pkgbin := filepath.Join(pkgdir, "usr", "bin")
 	entries, e := os.ReadDir(pkgbin)
+	// this block is an absolute motherfucker
 	if os.IsNotExist(e) {
-		return fmt.Errorf("I/O: directory does not exist")
-	} // damn even go devs dont have grammar
+		logStep("expose", "package has no usr/bin dir")
+		return nil
+	}
+	// do you  KNOW how many times i got  "could not bind to usr/bin?"
+	// burn in hell
+
 	if e != nil {
+
 		return fmt.Errorf("E: read pkg commands: %w", e)
 	}
 	home, _ := os.UserHomeDir()

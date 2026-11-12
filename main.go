@@ -25,6 +25,26 @@ const (
 )
 
 func main() {
+	// this motherfucker gets to be the first line because it  pissed  me off
+
+	home, _ := os.UserHomeDir()
+	paths := Paths{
+		Bin:   filepath.Join(home, ".local", "stowy", "usr", "bin"),
+		Lib:   filepath.Join(home, ".local", "stowy", "usr", "lib"),
+		Share: filepath.Join(home, ".local", "stowy", "usr", "share"),
+	}
+
+	for _, p := range []string{paths.Bin, paths.Lib, paths.Share} {
+		if err := checkPaths(p); err != nil {
+			fmt.Fprintf(os.Stderr, "E: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	//		if err := checkPaths(path); err != nil {
+	//		fmt.Fprintf(os.Stderr, "E: could not start because Stowy is a bitch about ~/.local/stowy/usr/bin/: %v\n", err)
+	//		os.Exit(1)
+	//	}
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "E: usage: stowy <(S)earch/(I)nstall/(L)ocal> ...")
 		os.Exit(2)
@@ -243,4 +263,21 @@ func depends(dev string) (meta.Pkg, string, error) {
 		}
 	}
 	return meta.Pkg{}, "", fmt.Errorf("could not resolve dependency %q", dev)
+}
+func checkPaths(path string) error {
+	info, err := os.Stat(path)
+
+	if os.IsNotExist(err) {
+		return os.MkdirAll(path, 0o755)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("%s exists but isn't a directory", path)
+	}
+
+	return nil
 }
